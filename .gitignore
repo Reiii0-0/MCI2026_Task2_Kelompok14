@@ -1,0 +1,18 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+
+# Data Lake (generated at runtime)
+data_lake/
+
+# Airflow logs & metadata
+logs/
+airflow.db
+
+# Docker
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp

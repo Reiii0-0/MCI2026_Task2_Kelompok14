@@ -1322,6 +1322,111 @@ MCI2026_Task2_Kelompok14/
 
 ---
 
+## Team Contributions
+
+The following breakdown is based **objectively on a direct code diff** between Raymond's initial submission and Farikh's final version (ZetaFix).
+
+---
+
+### Raymond Julius Pardosi — `5025241268`
+
+#### Infrastructure & Initial Architecture
+| Area | Details |
+|------|---------|
+| Pipeline design | Initial batch layer architecture (Spark → ClickHouse) |
+| Repository scaffold | Folder structure, `.gitignore` |
+| Docker | `Dockerfile` (Airflow 2.9.1 + Java JRE), `requirements.txt` |
+| Compose | Initial `docker-compose.yml` — 6 services (postgres, airflow ×3, clickhouse, metabase) |
+| Orchestration | `orders_pipeline_dag.py` with `*/10 * * * *` schedule |
+
+#### Data Ingestion
+- `fetch_orders.py` v1 — HTTP GET, nested JSON flattening, Parquet save
+
+#### Spark Processing — Aggregations 1–2
+- **Agg 1 — Top Products:** `groupBy(product_id, product_name, department, aisle)`, limited to top 30
+- **Agg 2 — Department Summary:** `groupBy(department_id, department)` → volume & reorder metrics
+- ClickHouse loading structure for `orders_db`
+
+#### Metabase Dashboard
+| Tab | Queries |
+|-----|---------|
+| **Tab 1 — General Overview** | 1.1–1.8: KPI cards, best-selling products, aisle analysis, reorder donut, top/bottom aisle efficiency |
+| **Tab 2 — Knowledge Detail** | 2.1–2.5: daily distribution, dead hours, dept item volume, shopping frequency, 24×7 heatmap |
+| **Tab 4 — Improvement Recommendations** | 4.1–4.8: one-hit wonders, loyal favourites, churn detection, frequency segments, engagement per Nth order, afterthought products, basket position vs reorder rate, department action labels |
+
+#### Documentation
+- `query_documentation.md` (initial per-tab query docs)
+- Initial `README.md`
+
+---
+
+### Farikh Muhammad Fauzan — `5025241135`
+
+#### Architecture Evolution → Hybrid Lambda
+- Redesigned the entire pipeline as a **Hybrid Lambda Architecture** (Batch Layer + Speed Layer + Serving Layer)
+- Introduced the `analytics` database in ClickHouse (dual-database pattern)
+- Full ASCII architecture flow diagram in README
+
+#### Infrastructure Fixes (`docker-compose.yml`)
+| Fix | Details |
+|-----|---------|
+| Data persistence | Added named volumes: `postgres_data`, `clickhouse_data`, `metabase_data` |
+| Service health | `depends_on: condition: service_healthy` for all Airflow services |
+| Metabase persistence | `MB_DB_FILE=/metabase-data/metabase.db`, renamed volume to `metabase_data` |
+
+#### Ingest Hardening (`fetch_orders.py`)
+- Migrated all field access from `order["key"]` → `order.get("key")` — resilience against missing/null fields
+- **Critical Parquet fix:** `engine='pyarrow', version='1.0'` to prevent `UnsupportedOperationException` in Spark JVM 3.5.x
+- Auto-create Data Lake folder if not present
+
+#### Orchestration
+- Reduced DAG schedule from `*/10 * * * *` → **`*/5 * * * *`**
+
+#### Spark Processing — Aggregations 3–9 + Performance Optimisation
+| Change | Details |
+|--------|---------|
+| SparkSession | Memory `1g` → `2g`, descriptive app name |
+| DataFrame caching | `df_clean.persist(StorageLevel.MEMORY_AND_DISK)` triggered by `.count()`, then `df_clean.unpersist()` post-aggregation — prevents re-reading Parquet for each of the 9 aggregations |
+| Variable hygiene | Renamed `df_raw` → `df_clean` consistently post-cleaning |
+| Removed limits | Dropped `.limit(30)` on top_products and `.limit(200)` on products_performance |
+| Fact table | Explicit `.select()` on needed columns before `.toPandas()` to minimize memory footprint |
+
+**New aggregations added:**
+
+| Agg | Table | Description |
+|-----|-------|-------------|
+| **Agg 3 (extended)** | `analytics.hourly_capacity` | Hourly activity expanded to produce capacity prediction table |
+| **Agg 4** | `analytics.products_performance` | Advanced product metrics with `avg_cart_position` |
+| **Agg 5** | `analytics.sales_forecasting` | Demand projection: `forecasted = current × (1 + reorder_probability)` |
+| **Agg 6** | `analytics.user_loyalty_segmentation` | RFM analysis — Gold/Silver/Bronze tiers × High/Medium/Low churn risk |
+| **Agg 7** | `analytics.product_cart_priority` | First-in-cart trigger products (Market Basket Analysis) |
+| **Agg 8** | `analytics.history_department_trend` + `orders_db.history_department_trend` | Speed Layer — dual-write NRT trend stream |
+| **Agg 9** | `orders_db.daily_summary` | Daily executive KPI snapshot (refactored) |
+
+#### New ClickHouse Tables (`analytics` DB)
+- `analytics.hourly_capacity`
+- `analytics.user_loyalty_segmentation`
+- `analytics.product_cart_priority`
+- Dual-write `analytics.history_department_trend` ↔ `orders_db.history_department_trend`
+
+#### Metabase Dashboard
+| Tab | Queries |
+|-----|---------|
+| **Tab 3 — Predictive Analytics & Forecasting** | 3.1–3.6: churn risk segmentation, demand prediction (overstock/stockout), inventory risk matrix, NRT 3-period moving average (window function), first-in-cart trigger products, RFM lifetime value distribution |
+| **Tab 5 — Data Governance & Pipeline Health** | 5.1–5.6: data quality scorecard, missing value audit trail, ETL reconciliation, null imputation impact, pipeline heartbeat, data freshness/latency SLA |
+| **Tab 6 — Behavioural Prediction Engine** | 6.1–6.6: shopping persona matrix, Lorenz curve (4 window functions), cart fatigue indicator, cross-selling department affinity (self-JOIN), "Frequently Bought Together" algorithm (Association Rule Mining + confidence score), smart restock reminder engine |
+
+#### Business Logic & Architecture Design
+- RFM segmentation thresholds and churn risk classification logic
+- Demand forecasting formula design
+- Association Rule Mining implementation (confidence = P(B\|A)) — modelled after Amazon's item-to-item collaborative filtering
+- Dual-database pattern design for Metabase query flexibility
+
+#### Final README
+- Wrote the complete README (this document) — technical explanations, DDL, flow diagrams, business insights, and references
+
+---
+
 <div align="center">
 
 **Institut Teknologi Sepuluh Nopember**
